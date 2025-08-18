@@ -6,17 +6,12 @@ import uvicorn
 import logging
 import sys
 from logging.handlers import RotatingFileHandler
-import threading
 
 # --- ロギング設定 ---
-# ログファイル名
 fastapi_log_file = "fastapi_app.log"
 discord_log_file = "discord_bot.log"
-
-# フォーマット設定
 formatter = logging.Formatter('[%(levelname)s] [%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
 
-# FastAPIログ設定
 fastapi_logger = logging.getLogger("fastapi_logger")
 fastapi_logger.setLevel(logging.INFO)
 fastapi_handler = RotatingFileHandler(fastapi_log_file, maxBytes=1024*1024, backupCount=5)
@@ -26,7 +21,6 @@ console_handler_fastapi = logging.StreamHandler(sys.stdout)
 console_handler_fastapi.setFormatter(formatter)
 fastapi_logger.addHandler(console_handler_fastapi)
 
-# Discordボットログ設定
 discord_logger = logging.getLogger("discord_logger")
 discord_logger.setLevel(logging.INFO)
 discord_handler = RotatingFileHandler(discord_log_file, maxBytes=1024*1024, backupCount=5)
@@ -36,7 +30,6 @@ console_handler_discord = logging.StreamHandler(sys.stdout)
 console_handler_discord.setFormatter(formatter)
 discord_logger.addHandler(console_handler_discord)
 
-# 既存のライブラリログを抑制
 logging.getLogger("uvicorn").setLevel(logging.WARNING)
 logging.getLogger("discord").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -53,31 +46,6 @@ except (ValueError, TypeError):
 intents = discord.Intents.default()
 client = discord.Client(intents=intents)
 app = FastAPI()
-
-# --- Discordボットのログインを先行して実行 ---
-def run_discord_bot():
-    """ボットを別スレッドで起動し、接続エラー時に再試行する。"""
-    max_retries = 5
-    retry_delay = 5  # seconds
-    for attempt in range(max_retries):
-        try:
-            discord_logger.info("Connecting Discord bot...")
-            client.run(DISCORD_BOT_TOKEN, log_handler=None)
-            return
-        except discord.errors.LoginFailure as e:
-            discord_logger.error(f"❌ Login failed: {e}")
-            sys.exit(1)
-        except Exception as e:
-            discord_logger.error(f"❌ Connection attempt {attempt + 1}/{max_retries} failed: {e}")
-            if attempt < max_retries - 1:
-                discord_logger.warning(f"Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-            else:
-                discord_logger.error("❌ Max retries reached. Exiting.")
-                sys.exit(1)
-
-bot_thread = threading.Thread(target=run_discord_bot)
-bot_thread.start()
 
 # --- Discordイベント ---
 @client.event
@@ -136,5 +104,13 @@ async def upload_file(file: UploadFile = File(...)):
             os.remove(file_path)
 
 # --- サーバー起動 ---
-# この部分がRenderのStart Commandで実行されます
-# uvicorn main:app --host 0.0.0.0 --port $PORT
+# Uvicornの起動時にDiscordボットを非同期で起動する
+@app.on_event("startup")
+async def start_discord_bot():
+    """アプリケーションの起動時にDiscordボットをログインさせます。"""
+    try:
+        await client.login(DISCORD_BOT_TOKEN)
+        discord_logger.info("✅ Discord bot login successful!")
+    except Exception as e:
+        discord_logger.error(f"❌ Failed to login Discord bot: {e}")
+        sys.exit(1)
