@@ -92,12 +92,13 @@
             margin-bottom: 20px;
             text-align: left;
         }
-        select {
+        select, textarea {
             width: 100%;
             padding: 10px;
             border-radius: 5px;
             border: 1px solid #ccc;
             font-size: 16px;
+            box-sizing: border-box; /* パディングを含めて幅を計算 */
         }
     </style>
 </head>
@@ -109,6 +110,10 @@
             <label for="channelSelect">チャンネルを選択:</label>
             <select id="channelSelect">
                 </select>
+        </div>
+        <div class="select-container">
+            <label for="messageInput">メッセージを入力:</label>
+            <textarea id="messageInput" rows="4" placeholder="ここにメッセージを入力してください..."></textarea>
         </div>
         <div class="upload-area" id="upload-area">
             <input type="file" id="fileInput" accept="image/*,video/*" multiple>
@@ -131,8 +136,8 @@
         const progressText = document.getElementById('progress-text');
         const message = document.getElementById('message');
         const channelSelect = document.getElementById('channelSelect');
+        const messageInput = document.getElementById('messageInput');
 
-        // チャンネル一覧を取得してドロップダウンを更新する関数
         async function fetchChannels() {
             try {
                 const response = await fetch('/channels');
@@ -141,7 +146,7 @@
                 }
                 const channels = await response.json();
                 
-                channelSelect.innerHTML = ''; // 既存のオプションをクリア
+                channelSelect.innerHTML = '';
                 if (channels.length === 0) {
                     const option = document.createElement('option');
                     option.textContent = 'チャンネルが見つかりません';
@@ -162,7 +167,6 @@
             }
         }
 
-        // 初期ロード時にチャンネル一覧を取得
         fetchChannels();
 
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -186,6 +190,7 @@
             if (files.length === 0) return;
 
             const selectedChannelId = channelSelect.value;
+            const userMessage = messageInput.value;
             if (!selectedChannelId) {
                 message.textContent = 'チャンネルを選択してください。';
                 message.classList.add('error');
@@ -201,6 +206,9 @@
             const formData = new FormData();
             formData.append('file', file);
             formData.append('channel_id', selectedChannelId);
+            if (userMessage) {
+                formData.append('message', userMessage);
+            }
 
             const xhr = new XMLHttpRequest();
             xhr.open('POST', '/upload/');
