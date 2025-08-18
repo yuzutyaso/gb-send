@@ -58,12 +58,24 @@
             border-radius: 5px;
             margin-top: 20px;
             overflow: hidden;
+            height: 25px;
+            position: relative;
         }
         .progress {
-            height: 15px;
+            height: 100%;
             background-color: #28a745;
             width: 0;
             transition: width 0.4s ease;
+        }
+        .progress-text {
+            position: absolute;
+            width: 100%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: #000;
+            font-weight: bold;
+            text-shadow: 0 0 2px #fff;
         }
         .message {
             margin-top: 20px;
@@ -76,12 +88,28 @@
         .message.error {
             color: #dc3545;
         }
+        .select-container {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        select {
+            width: 100%;
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>ファイルをアップロード</h1>
         <p>画像や動画をDiscordに送信します</p>
+        <div class="select-container">
+            <label for="channelSelect">チャンネルを選択:</label>
+            <select id="channelSelect">
+                </select>
+        </div>
         <div class="upload-area" id="upload-area">
             <input type="file" id="fileInput" accept="image/*,video/*" multiple>
             <p>ファイルをここにドラッグ＆ドロップ</p>
@@ -90,6 +118,7 @@
         <div class="file-info" id="file-info"></div>
         <div class="progress-bar">
             <div class="progress" id="progress"></div>
+            <div class="progress-text" id="progress-text">0%</div>
         </div>
         <div class="message" id="message"></div>
     </div>
@@ -99,7 +128,42 @@
         const fileInput = document.getElementById('fileInput');
         const fileInfo = document.getElementById('file-info');
         const progressBar = document.getElementById('progress');
+        const progressText = document.getElementById('progress-text');
         const message = document.getElementById('message');
+        const channelSelect = document.getElementById('channelSelect');
+
+        // チャンネル一覧を取得してドロップダウンを更新する関数
+        async function fetchChannels() {
+            try {
+                const response = await fetch('/channels');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch channels');
+                }
+                const channels = await response.json();
+                
+                channelSelect.innerHTML = ''; // 既存のオプションをクリア
+                if (channels.length === 0) {
+                    const option = document.createElement('option');
+                    option.textContent = 'チャンネルが見つかりません';
+                    channelSelect.appendChild(option);
+                    return;
+                }
+
+                channels.forEach(channel => {
+                    const option = document.createElement('option');
+                    option.value = channel.id;
+                    option.textContent = channel.name;
+                    channelSelect.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error fetching channels:', error);
+                message.textContent = `チャンネルリストの取得に失敗しました: ${error.message}`;
+                message.classList.add('error');
+            }
+        }
+
+        // 初期ロード時にチャンネル一覧を取得
+        fetchChannels();
 
         uploadArea.addEventListener('click', () => fileInput.click());
         uploadArea.addEventListener('dragover', (e) => {
@@ -118,42 +182,59 @@
             handleFiles(e.target.files);
         });
 
-        async function handleFiles(files) {
+        function handleFiles(files) {
             if (files.length === 0) return;
+
+            const selectedChannelId = channelSelect.value;
+            if (!selectedChannelId) {
+                message.textContent = 'チャンネルを選択してください。';
+                message.classList.add('error');
+                return;
+            }
 
             const file = files[0];
             fileInfo.textContent = `ファイル: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
             message.textContent = '';
             progressBar.style.width = '0%';
+            progressText.textContent = '0%';
 
             const formData = new FormData();
             formData.append('file', file);
+            formData.append('channel_id', selectedChannelId);
 
-            try {
-                const response = await fetch('/upload/', {
-                    method: 'POST',
-                    body: formData
-                });
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/upload/');
 
-                if (response.ok) {
-                    const data = await response.json();
-                    message.textContent = data.message;
+            xhr.upload.addEventListener('progress', (event) => {
+                if (event.lengthComputable) {
+                    const percent = Math.round((event.loaded / event.total) * 100);
+                    progressBar.style.width = percent + '%';
+                    progressText.textContent = `${percent}%`;
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    message.textContent = 'アップロードが完了しました！';
                     message.classList.remove('error');
                     message.classList.add('success');
-                    progressBar.style.width = '100%';
                 } else {
-                    const errorData = await response.json();
-                    message.textContent = `エラー: ${errorData.error || '不明なエラー'}`;
+                    const response = JSON.parse(xhr.responseText);
+                    message.textContent = `エラー: ${response.detail || '不明なエラー'}`;
                     message.classList.remove('success');
                     message.classList.add('error');
-                    progressBar.style.width = '0%';
                 }
-            } catch (err) {
-                message.textContent = `ネットワークエラー: ${err.message}`;
+            });
+
+            xhr.addEventListener('error', () => {
+                message.textContent = 'ネットワークエラーが発生しました。';
                 message.classList.remove('success');
                 message.classList.add('error');
                 progressBar.style.width = '0%';
-            }
+                progressText.textContent = '0%';
+            });
+            
+            xhr.send(formData);
         }
     </script>
 </body>
