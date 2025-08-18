@@ -5,13 +5,14 @@ from fastapi.responses import HTMLResponse
 import uvicorn
 import logging
 import sys
-from logging.handlers import RotatingFileHandler
 import asyncio
+from logging.handlers import RotatingFileHandler
 
 # --- ロギング設定 ---
 fastapi_log_file = "fastapi_app.log"
 discord_log_file = "discord_bot.log"
 formatter = logging.Formatter('[%(levelname)s] [%(asctime)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+
 fastapi_logger = logging.getLogger("fastapi_logger")
 fastapi_logger.setLevel(logging.INFO)
 fastapi_handler = RotatingFileHandler(fastapi_log_file, maxBytes=1024*1024, backupCount=5)
@@ -20,6 +21,7 @@ fastapi_logger.addHandler(fastapi_handler)
 console_handler_fastapi = logging.StreamHandler(sys.stdout)
 console_handler_fastapi.setFormatter(formatter)
 fastapi_logger.addHandler(console_handler_fastapi)
+
 discord_logger = logging.getLogger("discord_logger")
 discord_logger.setLevel(logging.INFO)
 discord_handler = RotatingFileHandler(discord_log_file, maxBytes=1024*1024, backupCount=5)
@@ -28,6 +30,7 @@ discord_logger.addHandler(discord_handler)
 console_handler_discord = logging.StreamHandler(sys.stdout)
 console_handler_discord.setFormatter(formatter)
 discord_logger.addHandler(console_handler_discord)
+
 logging.getLogger("uvicorn").setLevel(logging.WARNING)
 logging.getLogger("discord").setLevel(logging.WARNING)
 logging.getLogger("websockets").setLevel(logging.WARNING)
@@ -60,14 +63,13 @@ async def on_disconnect():
 # --- FastAPIエンドポイント ---
 @app.on_event("startup")
 async def start_discord_bot():
-    """アプリケーションの起動時にDiscordボットをログインさせます。"""
+    """アプリケーションの起動時にDiscordボットをバックグラウンドで開始します。"""
     try:
-        await client.login(DISCORD_BOT_TOKEN)
-        discord_logger.info("✅ Discord bot login successful!")
-        # Discordのクライアントがログインするまで待機
-        await client.wait_until_ready()
+        # ボットをバックグラウンドタスクとして実行
+        asyncio.create_task(client.start(DISCORD_BOT_TOKEN))
+        discord_logger.info("✅ Discord bot task created!")
     except Exception as e:
-        discord_logger.error(f"❌ Failed to login Discord bot: {e}")
+        discord_logger.error(f"❌ Failed to start Discord bot: {e}")
         sys.exit(1)
 
 @app.get("/", response_class=HTMLResponse)
@@ -88,8 +90,8 @@ async def get_channels():
 
     channels = []
     for guild in client.guilds:
+        # ボットがメッセージを送信できる権限があるチャンネルのみを返す
         for channel in guild.text_channels:
-            # ボットがメッセージを送信できる権限があるチャンネルのみを返す
             if channel.permissions_for(guild.me).send_messages:
                 channels.append({"id": str(channel.id), "name": f"#{channel.name} ({guild.name})"})
     
@@ -101,6 +103,11 @@ async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...))
     file_path = f"/tmp/{file.filename}"
     try:
         fastapi_logger.info(f"🔄 Receiving file: {file.filename} for channel ID: {channel_id}")
+        
+        # ボットがまだ準備できていない場合はエラーを返す
+        if not client.is_ready():
+            raise HTTPException(status_code=503, detail="Discord bot is not ready.")
+            
         with open(file_path, "wb") as f:
             f.write(await file.read())
         
@@ -119,3 +126,6 @@ async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...))
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
+
+# `if __name__ == "__main__":`ブロックは削除しました。
+# Renderが自動的に`uvicorn main:app ...`を実行します。
