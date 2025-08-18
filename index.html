@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Discord Uploader</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: #fff;
+            padding: 40px 60px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 100%;
+            max-width: 500px;
+        }
+        h1 {
+            color: #555;
+            margin-bottom: 10px;
+        }
+        p {
+            color: #888;
+            margin-bottom: 30px;
+        }
+        .upload-area {
+            border: 2px dashed #b0b0b0;
+            border-radius: 8px;
+            padding: 50px 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .upload-area:hover {
+            border-color: #007bff;
+            background-color: #eaf5ff;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-info {
+            margin-top: 20px;
+            color: #555;
+            font-weight: bold;
+        }
+        .progress-bar {
+            width: 100%;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        .progress {
+            height: 15px;
+            background-color: #28a745;
+            width: 0;
+            transition: width 0.4s ease;
+        }
+        .message {
+            margin-top: 20px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .message.success {
+            color: #28a745;
+        }
+        .message.error {
+            color: #dc3545;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ファイルをアップロード</h1>
+        <p>画像や動画をDiscordに送信します</p>
+        <div class="upload-area" id="upload-area">
+            <input type="file" id="fileInput" accept="image/*,video/*" multiple>
+            <p>ファイルをここにドラッグ＆ドロップ</p>
+            <p>またはクリックして選択</p>
+        </div>
+        <div class="file-info" id="file-info"></div>
+        <div class="progress-bar">
+            <div class="progress" id="progress"></div>
+        </div>
+        <div class="message" id="message"></div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('upload-area');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('file-info');
+        const progressBar = document.getElementById('progress');
+        const message = document.getElementById('message');
+
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#007bff';
+        });
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.style.borderColor = '#b0b0b0';
+        });
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.style.borderColor = '#b0b0b0';
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', (e) => {
+            handleFiles(e.target.files);
+        });
+
+        async function handleFiles(files) {
+            if (files.length === 0) return;
+
+            const file = files[0];
+            fileInfo.textContent = `ファイル: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+            message.textContent = '';
+            progressBar.style.width = '0%';
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const response = await fetch('/upload/', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    message.textContent = data.message;
+                    message.classList.remove('error');
+                    message.classList.add('success');
+                    progressBar.style.width = '100%';
+                } else {
+                    const errorData = await response.json();
+                    message.textContent = `エラー: ${errorData.error || '不明なエラー'}`;
+                    message.classList.remove('success');
+                    message.classList.add('error');
+                    progressBar.style.width = '0%';
+                }
+            } catch (err) {
+                message.textContent = `ネットワークエラー: ${err.message}`;
+                message.classList.remove('success');
+                message.classList.add('error');
+                progressBar.style.width = '0%';
+            }
+        }
+    </script>
+</body>
+</html>
