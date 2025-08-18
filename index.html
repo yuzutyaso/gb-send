@@ -98,14 +98,28 @@
             border-radius: 5px;
             border: 1px solid #ccc;
             font-size: 16px;
-            box-sizing: border-box; /* パディングを含めて幅を計算 */
+            box-sizing: border-box;
+        }
+        .submit-btn {
+            background-color: #007bff;
+            color: #fff;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 20px;
+            transition: background-color 0.3s ease;
+        }
+        .submit-btn:hover {
+            background-color: #0056b3;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>ファイルをアップロード</h1>
-        <p>画像や動画をDiscordに送信します</p>
+        <h1>Discordへ送信</h1>
+        <p>メッセージ、またはファイルとメッセージを送信します</p>
         <div class="select-container">
             <label for="channelSelect">チャンネルを選択:</label>
             <select id="channelSelect">
@@ -116,7 +130,7 @@
             <textarea id="messageInput" rows="4" placeholder="ここにメッセージを入力してください..."></textarea>
         </div>
         <div class="upload-area" id="upload-area">
-            <input type="file" id="fileInput" accept="image/*,video/*" multiple>
+            <input type="file" id="fileInput" accept="image/*,video/*">
             <p>ファイルをここにドラッグ＆ドロップ</p>
             <p>またはクリックして選択</p>
         </div>
@@ -125,6 +139,7 @@
             <div class="progress" id="progress"></div>
             <div class="progress-text" id="progress-text">0%</div>
         </div>
+        <button class="submit-btn" id="submitBtn">送信</button>
         <div class="message" id="message"></div>
     </div>
 
@@ -137,6 +152,7 @@
         const message = document.getElementById('message');
         const channelSelect = document.getElementById('channelSelect');
         const messageInput = document.getElementById('messageInput');
+        const submitBtn = document.getElementById('submitBtn');
 
         async function fetchChannels() {
             try {
@@ -180,34 +196,41 @@
         uploadArea.addEventListener('drop', (e) => {
             e.preventDefault();
             uploadArea.style.borderColor = '#b0b0b0';
-            handleFiles(e.dataTransfer.files);
+            handleSubmission(e.dataTransfer.files[0]);
         });
         fileInput.addEventListener('change', (e) => {
-            handleFiles(e.target.files);
+            handleSubmission(e.target.files[0]);
+        });
+        submitBtn.addEventListener('click', () => {
+            // ファイルが選択されていない場合はメッセージ単体で送信
+            const file = fileInput.files.length > 0 ? fileInput.files[0] : null;
+            handleSubmission(file);
         });
 
-        function handleFiles(files) {
-            if (files.length === 0) return;
-
+        function handleSubmission(file) {
             const selectedChannelId = channelSelect.value;
             const userMessage = messageInput.value;
+
+            // ファイルもメッセージもなければエラー
             if (!selectedChannelId) {
-                message.textContent = 'チャンネルを選択してください。';
-                message.classList.add('error');
+                showMessage('チャンネルを選択してください。', 'error');
+                return;
+            }
+            if (!file && !userMessage) {
+                showMessage('ファイルまたはメッセージを入力してください。', 'error');
                 return;
             }
 
-            const file = files[0];
-            fileInfo.textContent = `ファイル: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
-            message.textContent = '';
+            fileInfo.textContent = file ? `ファイル: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)` : '';
             progressBar.style.width = '0%';
             progressText.textContent = '0%';
+            showMessage('', 'neutral');
 
             const formData = new FormData();
-            formData.append('file', file);
             formData.append('channel_id', selectedChannelId);
-            if (userMessage) {
-                formData.append('message', userMessage);
+            formData.append('message', userMessage);
+            if (file) {
+                formData.append('file', file);
             }
 
             const xhr = new XMLHttpRequest();
@@ -223,26 +246,30 @@
 
             xhr.addEventListener('load', () => {
                 if (xhr.status >= 200 && xhr.status < 300) {
-                    message.textContent = 'アップロードが完了しました！';
-                    message.classList.remove('error');
-                    message.classList.add('success');
+                    showMessage('アップロードが完了しました！', 'success');
                 } else {
                     const response = JSON.parse(xhr.responseText);
-                    message.textContent = `エラー: ${response.detail || '不明なエラー'}`;
-                    message.classList.remove('success');
-                    message.classList.add('error');
+                    showMessage(`エラー: ${response.detail || '不明なエラー'}`, 'error');
                 }
             });
 
             xhr.addEventListener('error', () => {
-                message.textContent = 'ネットワークエラーが発生しました。';
-                message.classList.remove('success');
-                message.classList.add('error');
+                showMessage('ネットワークエラーが発生しました。', 'error');
                 progressBar.style.width = '0%';
                 progressText.textContent = '0%';
             });
             
             xhr.send(formData);
+        }
+
+        function showMessage(text, type) {
+            message.textContent = text;
+            message.classList.remove('success', 'error');
+            if (type === 'success') {
+                message.classList.add('success');
+            } else if (type === 'error') {
+                message.classList.add('error');
+            }
         }
     </script>
 </body>
