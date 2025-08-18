@@ -93,31 +93,45 @@ async def get_channels():
     return channels
 
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...), message: str = Form(None)):
+async def upload_file(channel_id: str = Form(...), message: str | None = Form(None), file: UploadFile | None = File(None)):
     """指定されたチャンネルにファイルとメッセージをアップロードします。"""
-    file_path = f"/tmp/{file.filename}"
+    
+    # ファイルもメッセージも存在しない場合はエラーを返す
+    if not message and not file:
+        raise HTTPException(status_code=400, detail="メッセージまたはファイルを送信してください。")
+
+    if not client.is_ready():
+        raise HTTPException(status_code=503, detail="Discord bot is not ready.")
+    
+    # メッセージがNoneの場合、空の文字列に変換
+    content = message if message is not None else ""
+    
+    file_path = None
     try:
-        fastapi_logger.info(f"🔄 Receiving file: {file.filename} for channel ID: {channel_id}")
-        
-        if not client.is_ready():
-            raise HTTPException(status_code=503, detail="Discord bot is not ready.")
-            
-        with open(file_path, "wb") as f:
-            f.write(await file.read())
-        
-        fastapi_logger.info(f"📤 Sending file to Discord...")
+        fastapi_logger.info(f"📤 Sending to Discord...")
         channel = client.get_channel(int(channel_id))
         if not channel:
             fastapi_logger.error(f"❌ Discord channel with ID {channel_id} not found.")
             raise HTTPException(status_code=404, detail="Discord channel not found.")
         
-        # messageパラメータが存在する場合、ファイルと一緒に送信
-        await channel.send(content=message, file=discord.File(file_path))
-        fastapi_logger.info(f"✅ File and message successfully sent to Discord.")
-        return {"message": "File uploaded successfully!"}
+        # ファイルが存在する場合のみ処理
+        if file and file.filename:
+            file_path = f"/tmp/{file.filename}"
+            with open(file_path, "wb") as f:
+                f.write(await file.read())
+            
+            await channel.send(content=content, file=discord.File(file_path))
+            
+        # ファイルが存在しない場合、メッセージのみ送信
+        else:
+            await channel.send(content=content)
+
+        fastapi_logger.info(f"✅ Message and/or file successfully sent to Discord.")
+        return {"message": "投稿が完了しました！"}
     except Exception as e:
-        fastapi_logger.error(f"❌ Failed to process file: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to process file: {e}")
+        fastapi_logger.error(f"❌ Failed to process request: {e}")
+        raise HTTPException(status_code=500, detail=f"投稿に失敗しました: {e}")
     finally:
-        if os.path.exists(file_path):
+        # ファイルが作成された場合のみ削除を試みる
+        if file_path and os.path.exists(file_path):
             os.remove(file_path)
