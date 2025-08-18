@@ -178,8 +178,7 @@
                 });
             } catch (error) {
                 console.error('Error fetching channels:', error);
-                message.textContent = `チャンネルリストの取得に失敗しました: ${error.message}`;
-                message.classList.add('error');
+                showMessage(`チャンネルリストの取得に失敗しました: ${error.message}`, 'error');
             }
         }
 
@@ -202,16 +201,14 @@
             handleSubmission(e.target.files[0]);
         });
         submitBtn.addEventListener('click', () => {
-            // ファイルが選択されていない場合はメッセージ単体で送信
             const file = fileInput.files.length > 0 ? fileInput.files[0] : null;
             handleSubmission(file);
         });
 
         function handleSubmission(file) {
             const selectedChannelId = channelSelect.value;
-            const userMessage = messageInput.value;
+            const userMessage = messageInput.value.trim();
 
-            // ファイルもメッセージもなければエラー
             if (!selectedChannelId) {
                 showMessage('チャンネルを選択してください。', 'error');
                 return;
@@ -228,7 +225,8 @@
 
             const formData = new FormData();
             formData.append('channel_id', selectedChannelId);
-            formData.append('message', userMessage);
+            formData.append('message', userMessage); // 空のメッセージも送信
+
             if (file) {
                 formData.append('file', file);
             }
@@ -245,11 +243,17 @@
             });
 
             xhr.addEventListener('load', () => {
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    showMessage('アップロードが完了しました！', 'success');
-                } else {
-                    const response = JSON.parse(xhr.responseText);
-                    showMessage(`エラー: ${response.detail || '不明なエラー'}`, 'error');
+                let responseText = xhr.responseText;
+                try {
+                    const response = JSON.parse(responseText);
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        showMessage('投稿が完了しました！', 'success');
+                    } else {
+                        showMessage(`エラー: ${response.detail || '不明なエラー'}`, 'error');
+                    }
+                } catch (e) {
+                    console.error('Failed to parse JSON:', responseText);
+                    showMessage('エラー: サーバーからの応答を解析できませんでした。', 'error');
                 }
             });
 
