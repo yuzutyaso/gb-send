@@ -43,7 +43,6 @@ if not DISCORD_BOT_TOKEN:
 
 # --- DiscordクライアントとFastAPIアプリ ---
 intents = discord.Intents.default()
-# intents.guildsを有効化し、チャンネル情報を取得できるようにする
 intents.guilds = True
 client = discord.Client(intents=intents)
 app = FastAPI()
@@ -63,9 +62,7 @@ async def on_disconnect():
 # --- FastAPIエンドポイント ---
 @app.on_event("startup")
 async def start_discord_bot():
-    """アプリケーションの起動時にDiscordボットをバックグラウンドで開始します。"""
     try:
-        # ボットをバックグラウンドタスクとして実行
         asyncio.create_task(client.start(DISCORD_BOT_TOKEN))
         discord_logger.info("✅ Discord bot task created!")
     except Exception as e:
@@ -84,13 +81,11 @@ async def read_root_html():
 
 @app.get("/channels")
 async def get_channels():
-    """ボットがアクセス可能なテキストチャンネルの一覧を返します。"""
     if not client.is_ready():
         raise HTTPException(status_code=503, detail="Discord bot is not ready.")
 
     channels = []
     for guild in client.guilds:
-        # ボットがメッセージを送信できる権限があるチャンネルのみを返す
         for channel in guild.text_channels:
             if channel.permissions_for(guild.me).send_messages:
                 channels.append({"id": str(channel.id), "name": f"#{channel.name} ({guild.name})"})
@@ -98,13 +93,12 @@ async def get_channels():
     return channels
 
 @app.post("/upload/")
-async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...)):
-    """指定されたチャンネルにファイルをアップロードします。"""
+async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...), message: str = Form(None)):
+    """指定されたチャンネルにファイルとメッセージをアップロードします。"""
     file_path = f"/tmp/{file.filename}"
     try:
         fastapi_logger.info(f"🔄 Receiving file: {file.filename} for channel ID: {channel_id}")
         
-        # ボットがまだ準備できていない場合はエラーを返す
         if not client.is_ready():
             raise HTTPException(status_code=503, detail="Discord bot is not ready.")
             
@@ -117,8 +111,9 @@ async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...))
             fastapi_logger.error(f"❌ Discord channel with ID {channel_id} not found.")
             raise HTTPException(status_code=404, detail="Discord channel not found.")
         
-        await channel.send(f"ファイルがアップロードされました: `{file.filename}`", file=discord.File(file_path))
-        fastapi_logger.info(f"✅ File successfully sent to Discord.")
+        # messageパラメータが存在する場合、ファイルと一緒に送信
+        await channel.send(content=message, file=discord.File(file_path))
+        fastapi_logger.info(f"✅ File and message successfully sent to Discord.")
         return {"message": "File uploaded successfully!"}
     except Exception as e:
         fastapi_logger.error(f"❌ Failed to process file: {e}")
@@ -126,6 +121,3 @@ async def upload_file(file: UploadFile = File(...), channel_id: str = Form(...))
     finally:
         if os.path.exists(file_path):
             os.remove(file_path)
-
-# `if __name__ == "__main__":`ブロックは削除しました。
-# Renderが自動的に`uvicorn main:app ...`を実行します。
