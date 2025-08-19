@@ -44,7 +44,6 @@ if not DISCORD_BOT_TOKEN:
 # --- DiscordクライアントとFastAPIアプリ ---
 intents = discord.Intents.default()
 intents.guilds = True
-# メッセージ履歴を取得するために必要なインテントを有効化
 intents.message_content = True 
 client = discord.Client(intents=intents)
 app = FastAPI()
@@ -111,6 +110,7 @@ async def get_messages(channel_id: str):
                 "author": msg.author.name,
                 "content": msg.content,
                 "timestamp": msg.created_at.isoformat(),
+                # 添付ファイル情報を追加
                 "attachments": [{"url": att.url, "filename": att.filename} for att in msg.attachments],
             })
         return messages
