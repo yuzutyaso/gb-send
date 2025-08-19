@@ -44,6 +44,8 @@ if not DISCORD_BOT_TOKEN:
 # --- DiscordクライアントとFastAPIアプリ ---
 intents = discord.Intents.default()
 intents.guilds = True
+# メッセージ履歴を取得するために必要なインテントを有効化
+intents.message_content = True 
 client = discord.Client(intents=intents)
 app = FastAPI()
 
@@ -92,18 +94,42 @@ async def get_channels():
     
     return channels
 
+@app.get("/messages/{channel_id}")
+async def get_messages(channel_id: str):
+    """指定されたチャンネルのメッセージ履歴（最新50件）を返します。"""
+    if not client.is_ready():
+        raise HTTPException(status_code=503, detail="Discord bot is not ready.")
+
+    try:
+        channel = client.get_channel(int(channel_id))
+        if not channel:
+            raise HTTPException(status_code=404, detail="Discord channel not found.")
+
+        messages = []
+        async for msg in channel.history(limit=50):
+            messages.append({
+                "author": msg.author.name,
+                "content": msg.content,
+                "timestamp": msg.created_at.isoformat(),
+                "attachments": [{"url": att.url, "filename": att.filename} for att in msg.attachments],
+            })
+        return messages
+
+    except Exception as e:
+        fastapi_logger.error(f"❌ Failed to fetch messages for channel {channel_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"メッセージの取得に失敗しました: {e}")
+
+
 @app.post("/upload/")
 async def upload_file(channel_id: str = Form(...), message: str | None = Form(None), file: UploadFile | None = File(None)):
     """指定されたチャンネルにファイルとメッセージをアップロードします。"""
     
-    # ファイルもメッセージも存在しない場合はエラーを返す
     if not message and not file:
         raise HTTPException(status_code=400, detail="メッセージまたはファイルを送信してください。")
 
     if not client.is_ready():
         raise HTTPException(status_code=503, detail="Discord bot is not ready.")
     
-    # メッセージがNoneの場合、空の文字列に変換
     content = message if message is not None else ""
     
     file_path = None
@@ -114,7 +140,6 @@ async def upload_file(channel_id: str = Form(...), message: str | None = Form(No
             fastapi_logger.error(f"❌ Discord channel with ID {channel_id} not found.")
             raise HTTPException(status_code=404, detail="Discord channel not found.")
         
-        # ファイルが存在する場合のみ処理
         if file and file.filename:
             file_path = f"/tmp/{file.filename}"
             with open(file_path, "wb") as f:
@@ -122,7 +147,6 @@ async def upload_file(channel_id: str = Form(...), message: str | None = Form(No
             
             await channel.send(content=content, file=discord.File(file_path))
             
-        # ファイルが存在しない場合、メッセージのみ送信
         else:
             await channel.send(content=content)
 
@@ -132,6 +156,5 @@ async def upload_file(channel_id: str = Form(...), message: str | None = Form(No
         fastapi_logger.error(f"❌ Failed to process request: {e}")
         raise HTTPException(status_code=500, detail=f"投稿に失敗しました: {e}")
     finally:
-        # ファイルが作成された場合のみ削除を試みる
         if file_path and os.path.exists(file_path):
             os.remove(file_path)
