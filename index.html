@@ -308,6 +308,7 @@
         function handleSubmission(file) {
             const selectedChannelId = channelSelect.value;
             const userMessage = messageInput.value.trim();
+            const MAX_FILE_SIZE_MB = 25; // Discordの最大サイズ（25MB）
 
             if (!selectedChannelId) {
                 showMessage('チャンネルを選択してください。', 'error');
@@ -315,6 +316,12 @@
             }
             if (!file && !userMessage) {
                 showMessage('ファイルまたはメッセージを入力してください。', 'error');
+                return;
+            }
+
+            // ファイルサイズチェックを追加
+            if (file && file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                showMessage(`エラー: ファイルサイズが${MAX_FILE_SIZE_MB}MBを超えています。`, 'error');
                 return;
             }
 
@@ -341,6 +348,33 @@
                 }
             });
 
+            xhr.addEventListener('load', () => {
+                let responseText = xhr.responseText;
+                try {
+                    const response = JSON.parse(responseText);
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        showMessage('投稿が完了しました！', 'success');
+                        messageInput.value = '';
+                        fileInput.value = '';
+                        fileInfo.textContent = '';
+                        fetchMessages(selectedChannelId);
+                    } else {
+                        showMessage(`エラー: ${response.detail || '不明なエラー'}`, 'error');
+                    }
+                } catch (e) {
+                    console.error('Failed to parse JSON:', responseText);
+                    showMessage('エラー: サーバーからの応答を解析できませんでした。', 'error');
+                }
+            });
+
+            xhr.addEventListener('error', () => {
+                showMessage('ネットワークエラーが発生しました。', 'error');
+                progressBar.style.width = '0%';
+                progressText.textContent = '0%';
+            });
+            
+            xhr.send(formData);
+        }
             xhr.addEventListener('load', () => {
                 let responseText = xhr.responseText;
                 try {
