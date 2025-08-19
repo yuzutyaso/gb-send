@@ -138,6 +138,12 @@
             margin-top: 5px;
             font-size: 14px;
         }
+        .discord-attachment-image, .discord-attachment-video {
+            max-width: 100%;
+            height: auto;
+            margin-top: 5px;
+            display: block;
+        }
     </style>
 </head>
 <body>
@@ -205,7 +211,6 @@
                     channelSelect.appendChild(option);
                 });
                 
-                // チャンネルリストがロードされたら最初のチャンネルのメッセージを読み込む
                 if (channels.length > 0) {
                     fetchMessages(channels[0].id);
                 }
@@ -228,16 +233,43 @@
                 if (messages.length === 0) {
                     messagesContainer.innerHTML = '<p style="text-align: center; color: #888;">このチャンネルにはメッセージがありません。</p>';
                 } else {
-                    messages.reverse().forEach(msg => { // 最新のものが下に表示されるように
+                    messages.reverse().forEach(msg => {
                         const messageElement = document.createElement('div');
                         messageElement.className = 'discord-message';
-                        messageElement.innerHTML = `
-                            <div class="discord-message-author">${msg.author}</div>
-                            <div class="discord-message-content">${msg.content}</div>
-                        `;
+                        
+                        const authorElement = document.createElement('div');
+                        authorElement.className = 'discord-message-author';
+                        authorElement.textContent = msg.author;
+                        
+                        const contentElement = document.createElement('div');
+                        contentElement.className = 'discord-message-content';
+                        contentElement.textContent = msg.content;
+                        
+                        messageElement.appendChild(authorElement);
+                        messageElement.appendChild(contentElement);
+
+                        // 添付ファイルがあれば表示
+                        if (msg.attachments && msg.attachments.length > 0) {
+                            msg.attachments.forEach(attachment => {
+                                const fileExtension = attachment.filename.split('.').pop().toLowerCase();
+                                if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(fileExtension)) {
+                                    const img = document.createElement('img');
+                                    img.src = attachment.url;
+                                    img.className = 'discord-attachment-image';
+                                    messageElement.appendChild(img);
+                                } else if (['mp4', 'webm', 'mov'].includes(fileExtension)) {
+                                    const video = document.createElement('video');
+                                    video.src = attachment.url;
+                                    video.controls = true;
+                                    video.className = 'discord-attachment-video';
+                                    messageElement.appendChild(video);
+                                }
+                            });
+                        }
+
                         messagesContainer.appendChild(messageElement);
                     });
-                    messagesContainer.scrollTop = messagesContainer.scrollHeight; // スクロールを一番下にする
+                    messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 }
 
             } catch (error) {
@@ -315,10 +347,10 @@
                     const response = JSON.parse(responseText);
                     if (xhr.status >= 200 && xhr.status < 300) {
                         showMessage('投稿が完了しました！', 'success');
-                        messageInput.value = ''; // メッセージ入力欄をクリア
-                        fileInput.value = ''; // ファイル入力欄をクリア
+                        messageInput.value = '';
+                        fileInput.value = '';
                         fileInfo.textContent = '';
-                        fetchMessages(selectedChannelId); // メッセージ一覧を更新
+                        fetchMessages(selectedChannelId);
                     } else {
                         showMessage(`エラー: ${response.detail || '不明なエラー'}`, 'error');
                     }
